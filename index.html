@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset=utf-8>
+ 
+  <title>Spor meg</title>
+    <!-- <script type="text/javascript" src="https://code.jquery.com/jquery-1.10.2.min.js"></script> --> 
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.4.1.min.js"></script> 
+  
+  <!-- OpenStreetMap + Leaflet.js version -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"></script>
+
+    <script src="https://unpkg.com/leaflet.markercluster@1.0.3/dist/leaflet.markercluster-src.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.0.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.0.3/dist/MarkerCluster.Default.css">
+
+    <script type="text/javascript" src="NoSleep.js"></script>
+    
+  <style>
+    .button, td, th, input, p, span { font-size: x-large; text-align: left;}
+    input { width: auto}
+  </style>
+</head>
+
+<body>
+    <form id=posisjon action=spore.pl method=GET>
+     <span>Gruppe:</span><input type=text name=gruppe id=gruppe value=alle style="width:50px">
+	    <span>Navn:</span><input type=text name=navn id=navn value=nn style="width:250px">
+    <b>Posisjon: <span id=pos>av</span></b>
+    </form>
+    <button class=button onclick=lokaliser('knapp')>Start sporing</button>
+    <button id=viskart class=button onclick=show_map()>Kart</button>
+    <button class=button onclick=get_spor(0)>Se spor</button>
+   <button id=visjeger class=button onclick=make_markers()>Skijegeren</button>
+    <button id=vishvor class=button onclick=vis_hvor()>Vis hvor</button>
+    <button id=nosleep class=button onclick=wake(true)>Våk</button>
+
+    <div id="map" style="height: 600px; width: 1000px;"></div>
+    <table>
+    <tr><th>Nord: <td><span id=lat></span><th> Øst:<td> <span id=lon></span>
+    <tr><th>Høyde: <td><span id=altitude></span><th> Nøyaktighet: <td><span id=accuracy></span>
+    <tr><th>Retning:<td> <span id=dir></span><th> Fart: <td><span id=speed></span>
+    <tr><th>OK:<td> <span id=nok></span><th> Feil: <td><span id=nfeil></span>
+    <tr><th>Tid: <td><span id=time></span><th>
+    </table>
+    <script>
+
+var clustergroup;
+var points=[
+    {id:"1",name:"1",lat:63.39378,lon:10.31313},
+    {id:"2",name:"2",lat:63.39741,lon:10.27634},
+    {id:"3",name:"3",lat:63.39713,lon:10.25640},
+    {id:"4",name:"4",lat:63.38347,lon:10.28297},
+    {id:"5",name:"5",lat:63.37252,lon:10.27670},
+    {id:"6",name:"6",lat:63.36610,lon:10.32884},
+    {id:"7",name:"7",lat:63.41065,lon:10.31836},
+    {id:"8",name:"8",lat:63.41681,lon:10.29974},
+    {id:"9",name:"9",lat:63.41309,lon:10.26361},
+    {id:"10",name:"10",lat:63.40752,lon:10.25371},
+    {id:"11",name:"11",lat:63.42803,lon:10.32787},
+    {id:"12",name:"12",lat:63.43723,lon:10.32609},
+    {id:"13",name:"13",lat:63.44649,lon:10.29365},
+    {id:"14",name:"14",lat:63.43128,lon:10.25166},
+    {id:"15",name:"15",lat:63.44074,lon:10.26596},
+    {id:"16",name:"16",lat:63.44212,lon:10.23870},
+    {id:"17",name:"17",lat:63.43480,lon:10.23256},
+    {id:"18",name:"18",lat:63.42681,lon:10.21166},
+    {id:"19",name:"19",lat:63.42812,lon:10.27840},
+    {id:"20",name:"20",lat:63.41442,lon:10.22444},
+    {id:"21",name:"21",lat:63.41081,lon:10.19673},
+    {id:"22",name:"22",lat:63.40691,lon:10.21093},
+    {id:"23",name:"23",lat:63.39750,lon:10.20761},
+    {id:"24",name:"24",lat:63.38930,lon:10.20445},
+    {id:"25",name:"25",lat:63.39392,lon:10.23032},
+    {id:"26",name:"26",lat:63.38409,lon:10.20279},
+    {id:"27",name:"27",lat:63.38769,lon:10.21973},
+    {id:"28",name:"28",lat:63.36241,lon:10.23349},
+    {id:"29",name:"29",lat:63.37134,lon:10.23210},
+    {id:"30",name:"30",lat:63.37575,lon:10.24930},
+    {id:"31",name:"31",lat:63.37632,lon:10.20522},
+    {id:"32",name:"32",lat:63.36742,lon:10.20342},
+    {id:"33",name:"33",lat:63.39235,lon:10.48454},
+    {id:"34",name:"34",lat:63.38108,lon:10.47798},
+    {id:"35",name:"35",lat:63.37221,lon:10.47684},
+    {id:"36",name:"36",lat:63.37366,lon:10.49612},
+    {id:"37",name:"37",lat:63.39833,lon:10.72873},
+    {id:"38",name:"38",lat:63.37315,lon:10.68702},
+    {id:"39",name:"39",lat:63.36420,lon:10.70333},
+    {id:"40",name:"40",lat:63.38008,lon:10.73491}
+];
+
+var home_bound=[ [ 63.45192, 10.08820], [63.31009, 10.68901] ];
+var noSleep = new NoSleep();
+
+function wake(activate){
+    if ( activate){
+	document.addEventListener('click', function enableNoSleep() {
+	    document.removeEventListener('click', enableNoSleep, false);
+	    noSleep.enable();
+	}, false);
+    } else {
+	noSleep.disable();
+    }
+}
+
+function make_markers () {
+    var i;
+
+    if ( ! map ) show_map();
+    
+    var bounds = new L.LatLngBounds();
+
+    for (i=0; i < points.length; i++){
+	
+	var pos=[points[i].lat, points[i].lon];
+	var sirkel=L.circle(pos, {color:"#FF5500",radius:20}).addTo(clustergroup);
+	sirkel.bindTooltip( points[i].name, {permanent: true, className: "my-label", offset: [0, 0] });
+	bounds.extend(sirkel.getLatLng());
+	// var marker = L.marker (pos).addTo(clustergroup);
+	// bounds.extend(marker.getLatLng());
+	// marker.bindTooltip( points[i].name, {permanent: true, className: "my-label", offset: [0, 0] });
+	
+	clustergroup.addTo(map);
+    }
+    
+    map.fitBounds(bounds);
+    document.getElementById("visjeger").disabled = true;
+}
+
+var merke;
+      
+function lokaliser(tekst){
+    var el=document.getElementById('pos');
+    el.innerHTML=tekst;
+    if ( navigator.geolocation){
+	// navigator.geolocation.getCurrentPosition(function(location) {
+	navigator.geolocation.watchPosition(function(location) {
+	    el.innerHTML = ' ' + location.coords.latitude.toFixed(5) + ' ' + 
+		location.coords.longitude.toFixed(5) + ' ' + 
+		location.coords.accuracy.toFixed(1);
+	    send_coord(location);
+	    var pos=[location.coords.latitude,location.coords.longitude];
+	    console.log('pos: ' + pos);
+	    sett_hvor(pos,location.coords.accuracy);
+	});
+    } else {
+	alert("geolocation ikke støttet");
+    }
+    
+}
+
+function sett_hvor(pos, radius){
+    if (map){
+	if ( ! merke ){
+	    merke=L.circle(pos, {color:"#FF5500",radius:radius}).addTo(map);
+	    merke.bindTooltip( "Du", {permanent: true, className: "my-label", offset: [0, 0] });	  
+	} else {
+	    merke.setLatLng(pos);
+	    merke.setRadius(radius);
+	}
+    }
+}
+
+function vis_hvor(){
+    if ( ! map ) show_map();
+    
+    navigator.geolocation.getCurrentPosition( function(location) {
+	var pos=[location.coords.latitude,location.coords.longitude];
+	sett_hvor(pos,location.coords.accuracy);
+    } );
+
+}
+
+
+function send_coord(location){
+    console.log(location);
+    console.log(location.coords);
+    console.log(location.coords.latitude);
+    var c=location.coords;
+    document.getElementById('lat').textContent = c.latitude.toFixed(5);
+    document.getElementById('lon').textContent = c.longitude.toFixed(5);
+    document.getElementById('altitude').textContent = c.altitude ? c.altitude.toFixed(1) : null;
+    document.getElementById('accuracy').textContent = c.accuracy ? c.accuracy.toFixed(1) : null;
+    document.getElementById('dir').textContent =c.heading ? c.heading.toFixed(1) : null;
+    document.getElementById('speed').textContent = c.speed ? c.speed.toFixed(1) : null;
+
+    var d = new Date(location.timestamp);
+    document.getElementById('time').textContent = d.toLocaleTimeString();
+
+    var gruppe = document.getElementById('gruppe').value;
+    var navn = document.getElementById('navn').value;
+    if ( gruppe  !== "" && navn  !== "" ){
+	//document.getElementById("posisjon").submit();
+	/* var json={"oper":"reg", "gruppe":gruppe, "navn":navn,
+		  "lat": c.latitude, "lon": c.longitude, "altitude": c.altitude,
+		  "dir": c.heading, "speed": c.speed, "time": location.timestamp }; 
+		  xhttp.open("POST", "spore.pl", true);
+	*/
+	urlparm= 'oper=reg' + '&gruppe="' + gruppe + '"&navn="' + navn +
+		  '"&lat=' + c.latitude + "&lon=" + c.longitude + "&altitude=" + c.altitude +
+		  "&dir=" + c.heading + "&speed=" + c.speed + "&time=" + location.timestamp;
+	send_request(urlparm);
+    }
+}
+
+function show_map(){
+    map = L.map('map').setView([60.14, 10.25], 11);
+    clustergroup = new L.markerClusterGroup();
+
+    L.tileLayer('https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=topo4&zoom={z}&x={x}&y={y}', {
+	attribution: '<a href="http://www.kartverket.no/">Kartverket</a>'
+    }).addTo(map);
+    size_map();
+    map.fitBounds(home_bound);
+    document.getElementById("viskart").disabled = true;
+}
+
+function get_spor(tid){
+    var urlparm='oper=spor&gruppe=' + document.getElementById('gruppe').value + '&time='+tid;
+    send_request(urlparm);
+}
+
+function vis_spor(spor){
+    if ( ! map ) show_map();
+    
+    var tracks={};
+    for ( i in spor){
+	var p=spor[i];
+	if ( ! tracks[p.navn] )
+	    tracks[p.navn] = new Array();
+	tracks[p.navn].push( [p.lat, p.lon] );
+    }
+
+    for ( navn in tracks){    
+	var polyline = L.polyline( tracks[navn], {color: 'blue'} ).addTo(map);
+    }
+    // zoom the map to the polyline
+    map.fitBounds(polyline.getBounds());
+}
+
+function send_request(urlparm){
+    xhttp.open("GET", "spore.pl?" + urlparm, true);
+    xhttp.send();
+}
+
+function size_map(){
+    $("#map").height( $(window).height()*0.8 );
+    $("#map").width( $(window).width()*0.9 );
+}
+
+var map; // leaflet map
+var nok=0;
+var nfeil=1;
+var xhttp = new XMLHttpRequest();
+
+xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 ){
+	if ( this.status == 200) {
+	    var result= JSON.parse( this.responseText);
+	    if ( result.status === "OK" ) {
+		if ( result.spor ){
+		    vis_spor(result.spor);
+		} else { // oper=reg
+		    nok++;
+		    document.getElementById('nok').textContent=nok;
+		}
+	    } else {
+		nfeil++;
+		document.getElementById('nfeil').textContent=nfeil;
+		console.log( "Error: " + result.code);
+	    }
+	} else {
+	    alert("server return status " + this.status );
+	}
+    } else
+	console.log("readyState: " + this.readyState);
+}
+$(window).on("resize", function () {
+    size_map();
+ 
+    var ua=navigator.userAgent;
+    var start=ua.indexOf(";")+1;
+    var end=ua.indexOf(")");
+    var c=ua.substr(start, end-start);
+    c=c.replace(/[\W]+/g,"_");
+    document.getElementById('navn').value=c;
+}).trigger("resize"); 
+
+
+
+//lokaliser('init');
+//alert(navigator.userAgent);
+
+</script>
+
+</body></html>
