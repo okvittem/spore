@@ -1,0 +1,703 @@
+Access-Control-Allow-Origin: *
+Content-Security-Policy-Report-Only: default-src https:; report-uri /csp-violation-report-endpoint/
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="MapAnt Norway is a giant orienteering map covering most of Norway. ">
+<title>MapAnt Norway - Orienteering map covering Norway</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css" integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ==" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js" integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew==" crossorigin="" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+<link rel="stylesheet" href="https://mapant.no/dist/L.Control.Locate.min.css" />
+<script src="https://mapant.no/dist/L.Control.Locate.min.js" charset="utf-8" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<script src="https://mapant.no/dist/leaflet-hash.js" charset="utf-8" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<script src="https://mapant.no/dist/Leaflet.MetricGrid.js" charset="utf-8" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.min.js" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<script src="https://mapant.no/dist/zepto.min.js" charset="utf-8" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+
+<script type="889683bc4dcf04e494ace2aa-text/javascript" src="togeojson.js"></script>
+<script type="889683bc4dcf04e494ace2aa-text/javascript" src="https://urda.kvittem.no/spor/leaflet.filelayer.js"></script>
+
+<style>
+    body { padding:0; margin:0px; font-family: arial, helvetica; font-size: 14px; color:#FFF; }
+    #header { position: absolute; height: 3em; left:0 ; top:0; right:0; 
+	      background: linear-gradient(to bottom, rgba(48,166,114,1) 0%, rgba(28,066,014,1) 100%);
+	    }
+    #mapid {
+	position: absolute; top: 3em; left:0; right:0; bottom:0; 
+	z-index: 10;
+    }
+
+    #spinner-id { display: none; /*position: absolute; top: 4em; left: 50px; z-index: 300;*/ }
+    
+    #logo {
+	position: absolute; left: 1em; bottom: 1em;
+	z-index: 40;
+    }
+
+    #top-logo {
+	position: absolute; left: 1em; bottom: 1em;
+	z-index: 40;
+    }
+
+
+   
+   .leaflet-draw-toolbar .leaflet-draw-draw-rectangle{
+       background: url(download.png) no-repeat center !important;
+       background-color: #fff !important;
+   }
+
+
+    .modal {
+	display:none;
+	position: fixed;
+	z-index: 200;
+	left:0;
+	top:0;
+	width: 100%;
+	height: 100%;
+	overflow:auto;
+	background-color: rgb(0,0,0);
+	background-color: rgba(0,0,0,0.4);
+    }
+
+    .modal-content {
+	background-color: #fefefe;
+	color: 000;
+	margin: 15% auto; /* 15% from the top and centered */
+	padding: 20px;
+	border: 1px solid #888;
+	width: 80%; /* Could be more or less, depending on screen size */
+    }
+
+    .close {
+	color: #aaa;
+	float: right;
+	font-size: 28px;
+	font-weight: bold;
+    }
+
+    .close:hover,
+    .close:focus {
+	color: black;
+	text-decoration: none;
+	cursor: pointer;
+    }
+    
+    .left {
+	float: left;
+	padding-left: 2em;
+	padding-top: 1.1ex;
+    }
+    .right {
+	float: right;
+	padding-right: 2em;
+	padding-top: 1.1ex;
+    }
+
+    #zoom-level {
+	margin-left: 100px;
+    }
+    #where {
+	margin-left: 20px;
+	
+    }
+
+     </style>
+<script src="proj4.js" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<script src="proj4leaflet.js" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<script type="889683bc4dcf04e494ace2aa-text/javascript">
+    
+    var snap_sensitivity=200;
+    var snap_sizes=[ [2100,2970], [2970,2100],[2100*.75,2970*.75], [2970*.75,2100*.75],[2100*.5,2970*.5], [2970*.5,2100*.5] ];
+    var snap_names=['A4 portrait 1:10.000','A4 landscape 1:10.000','A4 portrait 1:7.500','A4 landscape 1:7.500','A4 portrait 1:5.000','A4 landscape 1:5.000'];
+    var currentexport=null;
+  var markers_reported = L.layerGroup();
+  var mapControl;
+  var line_color_no=0;
+  var line_color=["Indigo", "Violet", "Blue", "Red", "Orange"];
+    
+  function createMap(){
+      var res = [
+	  8000 / 8,
+		8000 / 16,
+		8000 / 32,
+		8000 / 64,
+		8000 / 128,
+		8000 / 256,
+		8000 / 512,
+		8000 / 1024,
+		8000 / 2048,
+		8000 / 4096,	
+	  8000 / 8192,
+		8000 / 16384
+      ]; console.log(res);
+    var crs = new L.Proj.CRS(
+	"EPSG:32633",
+	"+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs",
+	{
+	    resolutions: res,
+	    origin: [-150000, 10000000],
+	    bounds: L.bounds([-100000, 8000000], [1280252, 6400000])
+	});
+
+
+
+    var map = new L.Map("mapid", {
+	crs: crs,
+	continuousWorld: true,
+	maxZoom: 11
+    });
+
+    var templateUrl;
+    templateUrl = "https://mapant.no/tiles/{z}/{y}/{x}.png";
+
+    var mapantLayer = new L.TileLayer(templateUrl, {
+	maxZoom: 11,
+	maxNativeZoom: 10,
+	minZoom: 0,
+	tileSize: 1024,
+	continuousWorld: true, 
+	unloadInvisibleTiles: false,
+	attribution: 'Basert p&aring; FKB og laserdata &copy; Statens Kartverk, Geovekst og kommunene'
+    }).addTo(map);
+
+    new L.control.scale({
+	position: 'bottomright',
+	imperial: false
+    }).addTo(map);
+
+
+      var popup = L.popup();
+
+
+      var stedsnavnWmsLayer = L.tileLayer.wms('https://mapant.no/internal-wms',
+					      {transparent: true, srs:"EPSG:32633",
+					       layers:"mapant:unified-names", format:"image/png8",
+					       attribution:"Stedsnavn © OpenStreetMap contributors"
+					      });
+
+      var osmPathsWms = L.tileLayer.wms('https://mapant.no/internal-wms',
+					      {transparent: true, srs:"EPSG:32633",
+					       layers:"mapant:osm_paths", format:"image/png8",
+					       attribution:"Stier © OpenStreetMap contributors"
+					      });
+
+
+
+
+      var u33nGrid = L.utmGrid(33, false, {
+	  color: '#008',
+	  minInterval: 1000,
+	  maxInterval: 1000,
+	  bounds: [[-100000, 0] , [1200000, 9400000]],
+	  minZoom: 3,
+	  showAxisLabels: [],
+	  showSquareLabels: [], // label 1km grid squares
+      });
+
+
+      var osmPathsCached = new L.TileLayer("https://mapant.no/tiles/osmpath/{z}/{x}/{y}.png",
+					   {transparent: true, srs:"EPSG:32633", tileSize: 1024, maxNativeZoom: 10,minZoom:6,
+					    attribution:"Stier © OpenStreetMap contributors"
+					   });
+
+      var stedsnavnCached = new L.TileLayer("https://mapant.no/tiles/names/{z}/{x}/{y}.png",
+					    {transparent: true, srs:"EPSG:32633", tileSize: 1024, maxNativeZoom: 10,
+					     attribution:"Stedsnavn © OpenStreetMap contributors"
+					    });
+
+      var baseMaps = {
+	  "mapant": mapantLayer
+      }
+      var overlayMaps = {
+	  "Names": stedsnavnCached,
+	  "OSM Paths": osmPathsCached,
+	  "UTM 33 grid": u33nGrid,
+	  "Reported tiles": markers_reported,
+
+      };
+
+      mapControl = L.control.layers(baseMaps,overlayMaps).addTo(map);
+
+      map.on('overlayadd', function(e) {
+	  if (e.name === 'Reported tiles') {
+	      load_reported();
+	  }
+      });
+
+  // add gpx file upload   
+  var filec=L.Control.fileLayerLoad({
+      layer: L.geoJson,
+      layerOptions: {
+	  style: { color: line_color[ line_color_no++ ] }, fitBounds: true
+      },
+      addToMap: true
+  }).addTo(map);
+      
+  filec.loader.on('data:error', function(error){
+      console.log, alert(error);
+  });
+  
+      filec.loader.on('data:loaded', function (e) {
+	  e.layer.options.style.color=line_color[ line_color_no++ % line_color.length ];
+      mapControl.addOverlay(e.layer, e.filename);
+      e.layer.bindPopup( e.filename);
+	  e.layer.bindTooltip( e.filename); 
+	  map.fitBounds(e.layer.getBounds());
+	  var last_track=JSON.stringify( e.layer.toGeoJSON().features[0].geometry );
+  });
+      map.addControl(filec);
+      
+      // end gpx upload
+
+      function onMapClick(e) {
+	  console.log(e);
+	  var utm = map.options.crs.project(e.latlng);
+	  var x = Math.floor(utm.x/1000)*1000;
+	  var y = Math.floor(utm.y/1000)*1000;
+	  var tile = x + "_" + y;
+
+	  var sw = map.options.crs.project(map.getBounds().getSouthWest());
+	  var ne = map.options.crs.project(map.getBounds().getNorthEast());
+	  var boundspar = "x0="+Math.round(sw.x)+"&amp;"+
+	      "y0="+Math.round(sw.y)+"&amp;"+
+	      "x1="+Math.round(ne.x)+"&amp;"+
+	      "y1="+Math.round(ne.y)+"&amp;";
+	  console.log(utm);
+	  const url = "https://mapant.no/?lat="+e.latlng.lat+"&lng="+e.latlng.lng+"&zl="+map.getZoom();
+
+	  var viewportdl = "<br/><br/><li><a download title=\"Download viewport (takes up to 20 seconds)\" href=\"https://mapant.no/api/extract-png?"+boundspar+"\">Download png</a> "+
+	      " and <a download href=\"https://mapant.no/api/extract-pgw?"+boundspar+"\">pgw</a> of viewport</a>";
+	  if (map.getZoom()<9) { viewportdl=""; }
+	  
+	  popup
+	      .setLatLng(e.latlng)
+	  
+	      .setContent("Location " + e.latlng +"<br/>UTM33 (x,y): " + Math.round(utm.x)+" "+Math.round(utm.y)+
+			  "<p><ul>"+
+			  "<li><a href=\""+url+"\">Link here</a>"+
+			  "<li><a href=\"https://kart.finn.no/?lat="+e.latlng.lat+"&lng="+e.latlng.lng+"&zoom="+(6+map.getZoom())+"\">Link to kart.finn.no</a>"+
+			  "<li><a href=\"https://www.norgeibilder.no/?x="+Math.floor(utm.x)+"&y="+Math.floor(utm.y)+"&level="+(6+map.getZoom())+"&utm=33\">Link to <i>Norge i bilder</i></a>"+
+			  "<li><a href=\"https://hoydedata.no/LaserInnsyn?x="+Math.floor(utm.x)+"&y="+Math.floor(utm.y)+"&level="+(6+map.getZoom())+"&utm=33&background=wmtsTopoGraatone\">Link to <i>Høydedata</i></a>"+
+			  "<li><a href=\"https://google.no/maps/@"+e.latlng.lat+","+e.latlng.lng+","+(6+map.getZoom())+"z\">Link to Google maps</a>"+
+			  viewportdl +
+			  "<br/><br/>"+
+			  "<li><a download href=\"https://mapant.no/rendered/full_"+Math.floor(utm.x/1000)*1000+"_"+ Math.floor(utm.y/1000)*1000+".png\">Download this tile in full resolution</a><br/>"+
+			  "<li><a download href=\"https://mapant.no/rendered/full_"+Math.floor(utm.x/1000)*1000+"_"+ Math.floor(utm.y/1000)*1000+".pgw\">Download this tile's pgw</a><br/><br/>"+
+
+			   "<li><a href=\"#\" onclick=\"return postCmd(this,'/api/report?x="+x+"&amp;y="+y+"')\">There is something wrong with this tile. </a>"+
+			  
+			  "<li><a target=\"_blank\" href=\""+
+			  "https://docs.google.com/forms/d/e/1FAIpQLSeGFhTRvldxtNkQAtNQCDmdNz9EuEFehCVG--kcdRpAqa0coQ/viewform?usp=pp_url&entry.276133580="+encodeURIComponent(url)+"\">General feedback</a>" +
+
+			  "<div id=\"spinner-id\" ><img src=\"spinner.gif\" width=\"50\" height=\"50\"></div>"+
+			  
+			  "</p>"
+			 )
+	      .openOn(map);
+      }
+
+      map.on('contextmenu', onMapClick);
+      map.on('moveend', function(e) {
+	  document.getElementById("zoom-level").textContent="Zoom "+map.getZoom();
+	  document.getElementById("where").innerHTML="<a href=\"https://mapant.no/?lat="+map.getCenter().lat+"&amp;lng="+map.getCenter().lng+
+	      "&amp;zl="+map.getZoom()
+	      +"\">"
+	      +map.getCenter().lat.toFixed(5)+","+map.getCenter().lng.toFixed(5)+"</a>";
+      });
+
+    return map;
+  }
+
+        function postCmd(e,url) {
+	  document.getElementById("spinner-id").style.display="block";
+	  console.log(e.parent);
+	  console.log(url);
+	  fetch(url).then(function() {       document.getElementById("spinner-id").style.display="none";});
+	  return false;
+      }
+
+
+
+
+
+</script>
+<body>
+<div id="header">
+<div class="left">
+<span id="top-logo"><a href="http://orientering.no/"><img src="logo-no.png" height="25"></a></span>
+<span id="zoom-level">Zoom</span>
+<span id="where"></span>
+</div>
+<div class="right">
+<span><button id="about-button">Om - About</button></span>
+<span>MapAnt Norway - Beta</span>
+</div>
+</div>
+<div id="modal-about" class="modal">
+<div id="about-content" class="modal-content">
+<span class="close">&times;</span>
+<h3>Om MapAnt Beta</h3>
+<p>
+MapAnt er et stort orienteringskart som har som m&aring;l &aring; dekke hele Norge, utgitt av <a href="http://orientering.no">Norsk orientering</a>. På <a href="https://turorientering.no/">turorientering.no</a> finner du ferdig opplegg med turer i hele landet.
+<p>
+Forel&oslash;pig er ikke hele landet dekket av laser-scanning, men kanskje blir det arbeidet ferdig i l&oslash;pet av 2021. Siden ekstra mange reiser i Norge i sommer, samtidig som det er f&aelig;rre o-l&oslash;p enn vanlig, &oslash;nsker vi &aring; publisere det vi forel&oslash;pig har rukket &aring; lage. Det vil v&aelig;re omr&aring;der som mangler, omr&aring;der med feil, og stiene har varierende kvalitet fra kommune til kommune. Rundt Trondheim er det en feil i laserscanningen, som gjør at kurvebildet er mye mer interessant enn i virkeligheten.
+</p>
+<p>
+Kartet er gjort tilgjengelig i en enkel kart-app med Leaflet, som fungerer fint i nettleseren p&aring; moderne telefoner.
+</p>
+<p>
+Hvis du &oslash;nsker kartet p&aring; papir, s&aring; bruk utskriftsfunksjonen i nettleseren. For bruk i OCAD eller lignende, kan du laste ned én og én km&sup2; blokk fra h&oslash;yreklikk-menyen.
+</p>
+<h3>About MapAnt Beta</h3>
+<p>This is a beta release. There are many holes in the coverage, bugs in rendering, and errors in data. Even though it's not perfect yet, it's still usable in many parts of the country.</p>
+<p>Mapant.no became possible through a collaboration between the Norwegian Orienteering Federation and Statens Kartverk (State Mapping Authority). Terje Mathisen, Jan Kocbach and Henning Spjelkavik has sliced & diced all available Norwegian las-data, FKB-data, and created a pipeline that processed more than 200.000 km&sup2; out of the 324.000 km&sup2; in Norway. </p>
+<p>We used <a href="https://rapidlasso.com/LAStools/">LAStools</a> by Martin Isenburg and the compressed LAZ-format he developed to handle and process the laser data into blocks suitable for furter processing. The software <a href="http://www.routegadget.net/karttapullautin/">Karttapullatin</a> by Jarkko Ryypp&ouml; was used to generate the orienteering maps. In total we've used 30TB of disk, and at peak about 200 CPU threads simultanously.
+<p>The laser scanning data and the map details (houses, roads, water features++) is delivered by and &copy; the Norwegian municipalities, Geovekst and Statens Kartverk.</p>
+<p style="color:grey">Privacy policy: The site uses Cloudflare CDN, and Google Analytics in anonymous IP mode for statistics, which may set cookies for operational purposes. Disable cookies in your browser if you don't like cookies.</p>
+<h3>How to make a course</h3>
+<p>
+Here are two step-by-step descriptions on how you can easily make a course on the downloaded matpant.no export, print it and export it to UsynligO or Livelox (both in Norwegian language). <a href="docs/Bruksanvisning_mapant_og_løyper_purplepen.pdf">Windows software PurplePen</a> and <a href="docs/Bruksanvisning_Mapant_2DReruncourseplanning.pdf">Online-tool 2DRerun Courseplanning</a>.
+<h3>Feedback</h3>
+<a href="https://forms.gle/damirB69WieScMGo8">Send feedback</a> or join the Facebook group <a href="https://www.facebook.com/groups/mapant.no">MapAnt.no</a>.
+<h3>License</h3>
+The license is currently not decided, besides that you can use the data to construct maps for non-commercial orienteering, and make exports/print-outs/screen-dumps for navigation etc.
+The license will probably be something close to
+<a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/">Creative Commons Attribution-NonCommercial 4.0 International License</a>.
+Contact <a href="http://orientering.no">Norsk Orientering</a> for more details.
+<p><a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/88x31.png" /></a>
+</div>
+</div>
+<div id="modal-export" class="modal">
+<div id="export-content" class="modal-content">
+<span class="close">&times;</span>
+<h3>Export map region</h3>
+Note! Export may take up to 20 seconds.
+<button onclick="if (!window.__cfRLUnblockHandlers) return false; exportarea(&quot;png&quot;);" id='exportpng' data-cf-modified-889683bc4dcf04e494ace2aa-="">Export PNG</button>
+<button onclick="if (!window.__cfRLUnblockHandlers) return false; exportarea(&quot;pgw&quot;);" id='exportpgw' data-cf-modified-889683bc4dcf04e494ace2aa-="">Export PGW</button>
+</div>
+</div>
+<div id="mapid"></div>
+<div id="logo"><a href="http://orientering.no"><img height="40" src="logo-no.png"></a></div>
+<script type="889683bc4dcf04e494ace2aa-text/javascript">
+    var map = createMap();
+
+    var params = {};
+    window.location.href.replace(/#.*/,"").replace(/[?&]+([^=&]+)=([^&]*)/gi, function(m, key, value) {
+	params[key] = value;
+    });
+    
+    var lat = params.lat || 59.9313;
+    var lng = params.lng ||10.49894;
+    var zl = params.zl || 1;
+    
+    map.setView(new L.LatLng(lat, lng),zl);
+
+    L.control.locate({locateOptions:{enableHighAccuracy: true}}).addTo(map);
+    
+
+
+
+
+
+// Initialise the FeatureGroup to store editable layers
+//var editableLayers = new L.FeatureGroup();
+//map.addLayer(editableLayers);
+
+L.drawLocal.draw.handlers.rectangle.tooltip.start = 'Choose export area';
+L.drawLocal.draw.toolbar.buttons.rectangle = 'Choose export area';
+
+
+L.Draw.Rectangle.prototype._drawShape = function (latlng) {
+
+    //var type='freesize';
+    var type='snap';
+    //var type='predef';
+    var predef_w=4000;
+    var predef_h=3000;
+
+    var maxw=10000;
+    var maxh=10000;
+
+    var nw = this._startLatLng;
+    var se = latlng;
+ 	  var nw_utm = map.options.crs.project(nw); // utm.x
+ 	  var se_utm = map.options.crs.project(se);
+    var ne;
+    var sw;
+
+    if (type=='freesize' || type=='snap')
+    {
+      var adjust=false;
+      if (Math.abs(se_utm.x-nw_utm.x)>maxw)
+      { se_utm.x = nw_utm.x + maxw;adjust=true; }
+      if (Math.abs(nw_utm.y-se_utm.y)>maxh)
+      { se_utm.y = nw_utm.y - maxh;adjust=true; }
+
+      if (type=='snap')
+      {
+        var w = se_utm.x-nw_utm.x;
+        var h = nw_utm.y-se_utm.y;
+
+        for (var snum=0;snum<snap_sizes.length;snum++)
+        {
+          var snaps = snap_sizes[snum];
+          if (Math.abs(snaps[0]-w)<snap_sensitivity & Math.abs(snaps[1]-h)<snap_sensitivity)
+          {
+            adjust=true;
+            se_utm.x = nw_utm.x + snaps[0];
+            se_utm.y = nw_utm.y - snaps[1];
+          }
+        }
+      }
+
+      if (adjust)
+      { se = map.options.crs.unproject(se_utm);}
+
+      var ne_utm = L.point([se_utm.x,nw_utm.y]);
+      var sw_utm = L.point([nw_utm.x,se_utm.y]);
+      ne = map.options.crs.unproject(ne_utm);
+      sw = map.options.crs.unproject(sw_utm);
+
+      currentexport=[ne_utm,sw_utm];
+    }
+    else if (type=='predef')
+    {
+      var nw_utm = L.point(se_utm.x,se_utm.y);
+      var ne_utm = L.point(se_utm.x+predef_w,se_utm.y);
+      var sw_utm = L.point(se_utm.x,se_utm.y-predef_h);
+      var se_utm = L.point(se_utm.x+predef_w,se_utm.y-predef_h);
+      
+      ne = map.options.crs.unproject(ne_utm);
+      sw = map.options.crs.unproject(sw_utm);
+      nw = map.options.crs.unproject(nw_utm);
+      se = map.options.crs.unproject(se_utm);
+
+    }
+
+  	if (!this._shape) {
+      this._shape = new L.polygon([nw,ne,se,sw],{color: 'blue'});
+			this._map.addLayer(this._shape);
+		} else {
+
+			this._shape.setLatLngs([nw,ne,se,sw]);
+		}
+	};
+
+L.Draw.Rectangle.prototype._getTooltipText = function () {
+  var subtext='';
+	if (this._shape) 
+  {
+    var latlngs = this._shape.getLatLngs();
+ 	  var nw_utm = map.options.crs.project(latlngs[0][0]); // utm.x
+ 	  var se_utm = map.options.crs.project(latlngs[0][2]);
+    var w = Math.abs(se_utm.x-nw_utm.x);
+    var h = Math.abs(nw_utm.y-se_utm.y);
+    subtext = Math.round(w/100)/10 +' x '+ Math.round(h/100)/10+' km';
+    for (var snum=0;snum<snap_sizes.length;snum++)
+    {
+       var snaps = snap_sizes[snum];
+       if (Math.abs(snaps[0]-w)<snap_sensitivity & Math.abs(snaps[1]-h)<snap_sensitivity)
+       {
+          subtext = subtext+ ', ' + snap_names[snum];
+       }
+    }
+
+
+  }
+	return { text: 'Release mouse to select area', subtext: subtext };
+}
+
+
+
+/*
+L.DrawToolbar.include({
+      getModeHandlers: function(map) {
+        return [
+    {
+            enabled: this.options.rectangle,
+            handler: new L.Draw.Rectangle(map, {icon: new L.Icon.Default()}),
+            title: 'Export region'
+    }]}});
+*/
+
+// Initialise the draw control and pass it the FeatureGroup of editable layers
+
+  
+
+var drawPluginOptions = {
+    position: 'topright',
+  draw: {
+    polygon: false,
+    polyline: false,
+    circle: false, 
+    rectangle: true,
+    marker: false,
+    circlemarker: false
+    }
+};
+
+
+var drawControl = new L.Control.Draw(drawPluginOptions);
+
+map.addControl(drawControl);
+
+//var editableLayers = new L.FeatureGroup();
+//map.addLayer(editableLayers);
+
+map.on('draw:created', function(e) {
+  var type = e.layerType,
+    layer = e.layer;
+
+  if (type === 'rectangle') {
+    //console.log('Created');
+    modal_export.style.display='block';
+  }
+});
+
+map.on('draw:drawstart', function(e) {
+  var type = e.layerType,
+    layer = e.layer;
+
+  if (type === 'rectangle') {
+    //console.log('starting');
+  }
+});
+
+
+
+    var modal = document.getElementById("modal-about");
+    var btn = document.getElementById("about-button");
+    var span = document.getElementsByClassName("close")[0];
+    
+
+    
+    btn.onclick = function() {
+	modal.style.display = "block";
+    }
+
+    span.onclick = function() {
+	modal.style.display = "none";
+    }
+
+    
+    window.onclick = function(event) {
+	if (event.target == modal) {
+	    modal.style.display = "none";
+	}
+    }
+
+    var modal_export = document.getElementById("modal-export");
+    var export_close = document.getElementsByClassName("close")[1];
+    export_close.onclick = function() {
+	    modal_export.style.display = "none";
+    }
+
+
+    var hash = new L.Hash(map);
+
+function exportarea(exporttype)
+{
+  var x0=Math.round(Math.min(currentexport[0].x,currentexport[1].x));
+  var y0=Math.round(Math.min(currentexport[0].y,currentexport[1].y));
+  var x1=Math.round(Math.max(currentexport[0].x,currentexport[1].x));
+  var y1=Math.round(Math.max(currentexport[0].y,currentexport[1].y));
+
+  https://mapant.no/api/extract-png?x0=148301&y0=6627691&x1=150941&y1=6628742
+  if (exporttype=='png')
+  { window.open("https://mapant.no/api/extract-png?x0="+x0+"&y0="+y0+"&x1="+x1+"&y1="+y1);}
+  else if (exporttype=='pgw')
+  { window.open("https://mapant.no/api/extract-pgw?x0="+x0+"&y0="+y0+"&x1="+x1+"&y1="+y1);}
+
+}
+    
+var reported_tiles=[];
+
+    function load_reported()
+{
+
+  
+  $.ajax({
+    dataType: "json",
+    url: "https://mapant.no/api/list-reported-geojson",
+    success: function(data) {
+
+      console.log('Loaded');
+      /*
+      data.features.forEach(
+        function(item)
+        {
+          var geometry=item.geometry;
+          if (geometry.type == 'Point')
+          {
+            var id = geometry.coordinates[0]+","+geometry.coordinates[1];
+            reported_tiles[id]=item; 
+          }
+        }
+    );
+      */
+
+      // Erstatt med cluster om det blir for mange/tungt
+      //var markers = L.markerClusterGroup();
+
+      var myStyle = { "color": "#f00", "weight": 2, "opacity": 0.8,fillOpacity: 0.0 };
+
+      var geoJsonLayer = L.geoJson(data, { style: myStyle,
+        onEachFeature: function (feature, layer) {
+
+          var id = feature.geometry.coordinates[0]+","+feature.geometry.coordinates[1];
+          layer.on({
+            click: clickMarker
+          });
+        },
+          pointToLayer: function (feature, coord) {
+                          //var latlng = map.options.crs.unproject(L.point(coord.lng+500,coord.lat+500));
+                          var id = feature.geometry.coordinates[0]+","+feature.geometry.coordinates[1];
+                          if (!reported_tiles[id])
+                          {
+                          reported_tiles[id]=feature;
+                          var nw = map.options.crs.unproject(L.point(coord.lng,coord.lat));
+                          var ne = map.options.crs.unproject(L.point(coord.lng,coord.lat+1000));
+                          var se = map.options.crs.unproject(L.point(coord.lng+1000,coord.lat+1000));
+                          var sw = map.options.crs.unproject(L.point(coord.lng+1000,coord.lat));
+                          //return L.circleMarker(latlng, geojsonMarkerOptions);
+                          return new L.polygon([nw,ne,se,sw]);;
+                          }
+            else
+            {
+              console.log('Already reported: '+id);
+              return null;
+            }
+                        }
+
+      });
+      markers_reported.addLayer(geoJsonLayer);
+
+
+    }
+  }
+ );
+
+
+}
+function clickMarker(e)
+{
+  console.log(e);
+}
+
+
+    
+  </script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-366767-19" type="889683bc4dcf04e494ace2aa-text/javascript"></script>
+<script type="889683bc4dcf04e494ace2aa-text/javascript">
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-366767-19', { 'anonymize_ip': true });
+  </script>
+<script src="https://ajax.cloudflare.com/cdn-cgi/scripts/7089c43e/cloudflare-static/rocket-loader.min.js" data-cf-settings="889683bc4dcf04e494ace2aa-|49" defer=""></script></html>
